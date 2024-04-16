@@ -50,15 +50,15 @@
 #include <net/tcp_states.h>
 #include <net/tcp.h>
 
-struct fq_skb_cb
+struct marco_fq_skb_cb
 {
     u64 time_to_send;
 };
 
-static inline struct fq_skb_cb *fq_skb_cb(struct sk_buff *skb)
+static inline struct marco_fq_skb_cb *marco_fq_skb_cb(struct sk_buff *skb)
 {
-    qdisc_cb_private_validate(skb, sizeof(struct fq_skb_cb));
-    return (struct fq_skb_cb *)qdisc_skb_cb(skb)->data;
+    qdisc_cb_private_validate(skb, sizeof(struct marco_fq_skb_cb));
+    return (struct marco_fq_skb_cb *)qdisc_skb_cb(skb)->data;
 }
 
 /*
@@ -66,9 +66,9 @@ static inline struct fq_skb_cb *fq_skb_cb(struct sk_buff *skb)
  * If packets have monotically increasing time_to_send, they are placed in O(1)
  * in linear list (head,tail), otherwise are placed in a rbtree (t_root).
  */
-struct fq_flow
+struct marco_fq_flow
 {
-    /* First cache line : used in fq_gc(), fq_enqueue(), fq_dequeue() */
+    /* First cache line : used in marco_fq_gc(), marco_fq_enqueue(), marco_fq_dequeue() */
     struct rb_root t_root;
     struct sk_buff *head; /* list of skbs for this flow : first skb */
     union
@@ -81,34 +81,34 @@ struct fq_flow
     u32 socket_hash; /* sk_hash */
     int qlen;        /* number of packets in flow queue */
 
-    /* Second cache line, used in fq_dequeue() */
+    /* Second cache line, used in marco_fq_dequeue() */
     int credit;
     /* 32bit hole on 64bit arches */
 
-    struct fq_flow *next; /* next pointer in RR lists */
+    struct marco_fq_flow *next; /* next pointer in RR lists */
 
     struct rb_node rate_node; /* anchor in q->delayed tree */
     u64 time_next_packet;
 } ____cacheline_aligned_in_smp;
 
-struct fq_flow_head
+struct marco_fq_flow_head
 {
-    struct fq_flow *first;
-    struct fq_flow *last;
+    struct marco_fq_flow *first;
+    struct marco_fq_flow *last;
 };
 
-struct fq_sched_data
+struct marco_fq_sched_data
 {
-    struct fq_flow_head new_flows;
+    struct marco_fq_flow_head new_flows;
 
-    struct fq_flow_head old_flows;
+    struct marco_fq_flow_head old_flows;
 
     struct rb_root delayed; /* for rate limited flows */
     u64 time_next_delayed_flow;
     u64 ktime_cache; /* copy of last ktime_get_ns() */
     unsigned long unthrottle_latency_ns;
 
-    struct fq_flow internal; /* for non classified or high prio packets */
+    struct marco_fq_flow internal; /* for non classified or high prio packets */
     u32 quantum;
     u32 initial_quantum;
     u32 flow_refill_delay;
@@ -146,25 +146,25 @@ struct fq_sched_data
  * to a sk_buff or contains a jiffies value, if we force this value to be odd.
  * This assumes f->tail low order bit must be 0 since alignof(struct sk_buff) >= 2
  */
-static void fq_flow_set_detached(struct fq_flow *f)
+static void marco_fq_flow_set_detached(struct marco_fq_flow *f)
 {
     f->age = jiffies | 1UL;
 }
 
-static bool fq_flow_is_detached(const struct fq_flow *f)
+static bool marco_fq_flow_is_detached(const struct marco_fq_flow *f)
 {
     return !!(f->age & 1UL);
 }
 
 /* special value to mark a throttled flow (not on old/new list) */
-static struct fq_flow throttled;
+static struct marco_fq_flow throttled;
 
-static bool fq_flow_is_throttled(const struct fq_flow *f)
+static bool marco_fq_flow_is_throttled(const struct marco_fq_flow *f)
 {
     return f->next == &throttled;
 }
 
-static void fq_flow_add_tail(struct fq_flow_head *head, struct fq_flow *flow)
+static void marco_fq_flow_add_tail(struct marco_fq_flow_head *head, struct marco_fq_flow *flow)
 {
     if (head->first)
         head->last->next = flow;
@@ -174,23 +174,23 @@ static void fq_flow_add_tail(struct fq_flow_head *head, struct fq_flow *flow)
     flow->next = NULL;
 }
 
-static void fq_flow_unset_throttled(struct fq_sched_data *q, struct fq_flow *f)
+static void marco_fq_flow_unset_throttled(struct marco_fq_sched_data *q, struct marco_fq_flow *f)
 {
     rb_erase(&f->rate_node, &q->delayed);
     q->throttled_flows--;
-    fq_flow_add_tail(&q->old_flows, f);
+    marco_fq_flow_add_tail(&q->old_flows, f);
 }
 
-static void fq_flow_set_throttled(struct fq_sched_data *q, struct fq_flow *f)
+static void marco_fq_flow_set_throttled(struct marco_fq_sched_data *q, struct marco_fq_flow *f)
 {
     struct rb_node **p = &q->delayed.rb_node, *parent = NULL;
 
     while (*p)
     {
-        struct fq_flow *aux;
+        struct marco_fq_flow *aux;
 
         parent = *p;
-        aux = rb_entry(parent, struct fq_flow, rate_node);
+        aux = rb_entry(parent, struct marco_fq_flow, rate_node);
         if (f->time_next_packet >= aux->time_next_packet)
             p = &parent->rb_right;
         else
@@ -206,25 +206,25 @@ static void fq_flow_set_throttled(struct fq_sched_data *q, struct fq_flow *f)
         q->time_next_delayed_flow = f->time_next_packet;
 }
 
-static struct kmem_cache *fq_flow_cachep __read_mostly;
+static struct kmem_cache *marco_fq_flow_cachep __read_mostly;
 
 /* limit number of collected flows per round */
 #define FQ_GC_MAX 8
 #define FQ_GC_AGE (3 * HZ)
 
-static bool fq_gc_candidate(const struct fq_flow *f)
+static bool marco_fq_gc_candidate(const struct marco_fq_flow *f)
 {
-    return fq_flow_is_detached(f) &&
+    return marco_fq_flow_is_detached(f) &&
            time_after(jiffies, f->age + FQ_GC_AGE);
 }
 
-static void fq_gc(struct fq_sched_data *q,
+static void marco_fq_gc(struct marco_fq_sched_data *q,
                   struct rb_root *root,
                   struct sock *sk)
 {
     struct rb_node **p, *parent;
     void *tofree[FQ_GC_MAX];
-    struct fq_flow *f;
+    struct marco_fq_flow *f;
     int i, fcnt = 0;
 
     p = &root->rb_node;
@@ -233,11 +233,11 @@ static void fq_gc(struct fq_sched_data *q,
     {
         parent = *p;
 
-        f = rb_entry(parent, struct fq_flow, fq_node);
+        f = rb_entry(parent, struct marco_fq_flow, fq_node);
         if (f->sk == sk)
             break;
 
-        if (fq_gc_candidate(f))
+        if (marco_fq_gc_candidate(f))
         {
             tofree[fcnt++] = f;
             if (fcnt == FQ_GC_MAX)
@@ -262,15 +262,15 @@ static void fq_gc(struct fq_sched_data *q,
     q->inactive_flows -= fcnt;
     q->stat_gc_flows += fcnt;
 
-    kmem_cache_free_bulk(fq_flow_cachep, fcnt, tofree);
+    kmem_cache_free_bulk(marco_fq_flow_cachep, fcnt, tofree);
 }
 
-static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
+static struct marco_fq_flow *marco_fq_classify(struct sk_buff *skb, struct marco_fq_sched_data *q)
 {
     struct rb_node **p, *parent;
     struct sock *sk = skb->sk;
     struct rb_root *root;
-    struct fq_flow *f;
+    struct marco_fq_flow *f;
 
     /* warning: no starvation prevention... */
     if (unlikely((skb->priority & TC_PRIO_MAX) == TC_PRIO_CONTROL))
@@ -313,7 +313,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
 
     if (q->flows >= (2U << q->fq_trees_log) &&
         q->inactive_flows > q->flows / 2)
-        fq_gc(q, root, sk);
+        marco_fq_gc(q, root, sk);
 
     p = &root->rb_node;
     parent = NULL;
@@ -321,7 +321,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
     {
         parent = *p;
 
-        f = rb_entry(parent, struct fq_flow, fq_node);
+        f = rb_entry(parent, struct marco_fq_flow, fq_node);
         if (f->sk == sk)
         {
             /* socket might have been reallocated, so check
@@ -337,8 +337,8 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
                 if (q->rate_enable)
                     smp_store_release(&sk->sk_pacing_status,
                                       SK_PACING_FQ);
-                if (fq_flow_is_throttled(f))
-                    fq_flow_unset_throttled(q, f);
+                if (marco_fq_flow_is_throttled(f))
+                    marco_fq_flow_unset_throttled(q, f);
                 f->time_next_packet = 0ULL;
             }
             return f;
@@ -349,7 +349,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
             p = &parent->rb_left;
     }
 
-    f = kmem_cache_zalloc(fq_flow_cachep, GFP_ATOMIC | __GFP_NOWARN);
+    f = kmem_cache_zalloc(marco_fq_flow_cachep, GFP_ATOMIC | __GFP_NOWARN);
     if (unlikely(!f))
     {
         q->stat_allocation_errors++;
@@ -357,7 +357,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
     }
     /* f->t_root is already zeroed after kmem_cache_zalloc() */
 
-    fq_flow_set_detached(f);
+    marco_fq_flow_set_detached(f);
     f->sk = sk;
     if (skb->sk == sk)
     {
@@ -376,7 +376,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
     return f;
 }
 
-static struct sk_buff *fq_peek(struct fq_flow *flow)
+static struct sk_buff *marco_fq_peek(struct marco_fq_flow *flow)
 {
     struct sk_buff *skb = skb_rb_first(&flow->t_root);
     struct sk_buff *head = flow->head;
@@ -387,12 +387,12 @@ static struct sk_buff *fq_peek(struct fq_flow *flow)
     if (!head)
         return skb;
 
-    if (fq_skb_cb(skb)->time_to_send < fq_skb_cb(head)->time_to_send)
+    if (marco_fq_skb_cb(skb)->time_to_send < marco_fq_skb_cb(head)->time_to_send)
         return skb;
     return head;
 }
 
-static void fq_erase_head(struct Qdisc *sch, struct fq_flow *flow,
+static void marco_fq_erase_head(struct Qdisc *sch, struct marco_fq_flow *flow,
                           struct sk_buff *skb)
 {
     if (skb == flow->head)
@@ -407,26 +407,26 @@ static void fq_erase_head(struct Qdisc *sch, struct fq_flow *flow,
 }
 
 /* Remove one skb from flow queue.
- * This skb must be the return value of prior fq_peek().
+ * This skb must be the return value of prior marco_fq_peek().
  */
-static void fq_dequeue_skb(struct Qdisc *sch, struct fq_flow *flow,
+static void marco_fq_dequeue_skb(struct Qdisc *sch, struct marco_fq_flow *flow,
                            struct sk_buff *skb)
 {
-    fq_erase_head(sch, flow, skb);
+    marco_fq_erase_head(sch, flow, skb);
     skb_mark_not_on_list(skb);
     flow->qlen--;
     qdisc_qstats_backlog_dec(sch, skb);
     sch->q.qlen--;
 }
 
-static void flow_queue_add(struct fq_flow *flow, struct sk_buff *skb)
+static void marco_flow_queue_add(struct marco_fq_flow *flow, struct sk_buff *skb)
 {
     struct rb_node **p, *parent;
     struct sk_buff *head, *aux;
 
     head = flow->head;
     if (!head ||
-        fq_skb_cb(skb)->time_to_send >= fq_skb_cb(flow->tail)->time_to_send)
+        marco_fq_skb_cb(skb)->time_to_send >= marco_fq_skb_cb(flow->tail)->time_to_send)
     {
         if (!head)
             flow->head = skb;
@@ -444,7 +444,7 @@ static void flow_queue_add(struct fq_flow *flow, struct sk_buff *skb)
     {
         parent = *p;
         aux = rb_to_skb(parent);
-        if (fq_skb_cb(skb)->time_to_send >= fq_skb_cb(aux)->time_to_send)
+        if (marco_fq_skb_cb(skb)->time_to_send >= marco_fq_skb_cb(aux)->time_to_send)
             p = &parent->rb_right;
         else
             p = &parent->rb_left;
@@ -453,24 +453,24 @@ static void flow_queue_add(struct fq_flow *flow, struct sk_buff *skb)
     rb_insert_color(&skb->rbnode, &flow->t_root);
 }
 
-static bool fq_packet_beyond_horizon(const struct sk_buff *skb,
-                                     const struct fq_sched_data *q)
+static bool marco_fq_packet_beyond_horizon(const struct sk_buff *skb,
+                                     const struct marco_fq_sched_data *q)
 {
     return unlikely((s64)skb->tstamp > (s64)(q->ktime_cache + q->horizon));
 }
 
-static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
+static int marco_fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
                       struct sk_buff **to_free)
 {
-    struct fq_sched_data *q = qdisc_priv(sch);
-    struct fq_flow *f;
+    struct marco_fq_sched_data *q = qdisc_priv(sch);
+    struct marco_fq_flow *f;
 
     if (unlikely(sch->q.qlen >= sch->limit))
         return qdisc_drop(skb, sch, to_free);
 
     if (!skb->tstamp)
     {
-        fq_skb_cb(skb)->time_to_send = q->ktime_cache = ktime_get_ns();
+        marco_fq_skb_cb(skb)->time_to_send = q->ktime_cache = ktime_get_ns();
     }
     else
     {
@@ -478,11 +478,11 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
          * Try first if our cached value, to avoid ktime_get_ns()
          * cost in most cases.
          */
-        if (fq_packet_beyond_horizon(skb, q))
+        if (marco_fq_packet_beyond_horizon(skb, q))
         {
             /* Refresh our cache and check another time */
             q->ktime_cache = ktime_get_ns();
-            if (fq_packet_beyond_horizon(skb, q))
+            if (marco_fq_packet_beyond_horizon(skb, q))
             {
                 if (q->horizon_drop)
                 {
@@ -493,10 +493,10 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
                 skb->tstamp = q->ktime_cache + q->horizon;
             }
         }
-        fq_skb_cb(skb)->time_to_send = skb->tstamp;
+        marco_fq_skb_cb(skb)->time_to_send = skb->tstamp;
     }
 
-    f = fq_classify(skb, q);
+    f = marco_fq_classify(skb, q);
     if (unlikely(f->qlen >= q->flow_plimit && f != &q->internal))
     {
         q->stat_flows_plimit++;
@@ -505,16 +505,16 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 
     f->qlen++;
     qdisc_qstats_backlog_inc(sch, skb);
-    if (fq_flow_is_detached(f))
+    if (marco_fq_flow_is_detached(f))
     {
-        fq_flow_add_tail(&q->new_flows, f);
+        marco_fq_flow_add_tail(&q->new_flows, f);
         if (time_after(jiffies, f->age + q->flow_refill_delay))
             f->credit = max_t(u32, f->credit, q->quantum);
         q->inactive_flows--;
     }
 
     /* Note: this overwrites f->age */
-    flow_queue_add(f, skb);
+    marco_flow_queue_add(f, skb);
 
     if (unlikely(f == &q->internal))
     {
@@ -525,7 +525,7 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
     return NET_XMIT_SUCCESS;
 }
 
-static void fq_check_throttled(struct fq_sched_data *q, u64 now)
+static void marco_fq_check_throttled(struct marco_fq_sched_data *q, u64 now)
 {
     unsigned long sample;
     struct rb_node *p;
@@ -543,23 +543,23 @@ static void fq_check_throttled(struct fq_sched_data *q, u64 now)
     q->time_next_delayed_flow = ~0ULL;
     while ((p = rb_first(&q->delayed)) != NULL)
     {
-        struct fq_flow *f = rb_entry(p, struct fq_flow, rate_node);
+        struct marco_fq_flow *f = rb_entry(p, struct marco_fq_flow, rate_node);
 
         if (f->time_next_packet > now)
         {
             q->time_next_delayed_flow = f->time_next_packet;
             break;
         }
-        fq_flow_unset_throttled(q, f);
+        marco_fq_flow_unset_throttled(q, f);
     }
 }
 
-static struct sk_buff *fq_dequeue(struct Qdisc *sch)
+static struct sk_buff *marco_fq_dequeue(struct Qdisc *sch)
 {
-    struct fq_sched_data *q = qdisc_priv(sch);
-    struct fq_flow_head *head;
+    struct marco_fq_sched_data *q = qdisc_priv(sch);
+    struct marco_fq_flow_head *head;
     struct sk_buff *skb;
-    struct fq_flow *f;
+    struct marco_fq_flow *f;
     unsigned long rate;
     u32 plen;
     u64 now;
@@ -567,15 +567,15 @@ static struct sk_buff *fq_dequeue(struct Qdisc *sch)
     if (!sch->q.qlen)
         return NULL;
 
-    skb = fq_peek(&q->internal);
+    skb = marco_fq_peek(&q->internal);
     if (unlikely(skb))
     {
-        fq_dequeue_skb(sch, &q->internal, skb);
+        marco_fq_dequeue_skb(sch, &q->internal, skb);
         goto out;
     }
 
     q->ktime_cache = now = ktime_get_ns();
-    fq_check_throttled(q, now);
+    marco_fq_check_throttled(q, now);
 begin:
     head = &q->new_flows;
     if (!head->first)
@@ -596,21 +596,21 @@ begin:
     {
         f->credit += q->quantum;
         head->first = f->next;
-        fq_flow_add_tail(&q->old_flows, f);
+        marco_fq_flow_add_tail(&q->old_flows, f);
         goto begin;
     }
 
-    skb = fq_peek(f);
+    skb = marco_fq_peek(f);
     if (skb)
     {
-        u64 time_next_packet = max_t(u64, fq_skb_cb(skb)->time_to_send,
+        u64 time_next_packet = max_t(u64, marco_fq_skb_cb(skb)->time_to_send,
                                      f->time_next_packet);
 
         if (now < time_next_packet)
         {
             head->first = f->next;
             f->time_next_packet = time_next_packet;
-            fq_flow_set_throttled(q, f);
+            marco_fq_flow_set_throttled(q, f);
             goto begin;
         }
         prefetch(&skb->end);
@@ -619,7 +619,7 @@ begin:
             INET_ECN_set_ce(skb);
             q->stat_ce_mark++;
         }
-        fq_dequeue_skb(sch, f, skb);
+        marco_fq_dequeue_skb(sch, f, skb);
     }
     else
     {
@@ -627,11 +627,11 @@ begin:
         /* force a pass through old_flows to prevent starvation */
         if ((head == &q->new_flows) && q->old_flows.first)
         {
-            fq_flow_add_tail(&q->old_flows, f);
+            marco_fq_flow_add_tail(&q->old_flows, f);
         }
         else
         {
-            fq_flow_set_detached(f);
+            marco_fq_flow_set_detached(f);
             q->inactive_flows++;
         }
         goto begin;
@@ -692,7 +692,7 @@ out:
     return skb;
 }
 
-static void fq_flow_purge(struct fq_flow *flow)
+static void marco_fq_flow_purge(struct marco_fq_flow *flow)
 {
     struct rb_node *p = rb_first(&flow->t_root);
 
@@ -709,18 +709,18 @@ static void fq_flow_purge(struct fq_flow *flow)
     flow->qlen = 0;
 }
 
-static void fq_reset(struct Qdisc *sch)
+static void marco_fq_reset(struct Qdisc *sch)
 {
-    struct fq_sched_data *q = qdisc_priv(sch);
+    struct marco_fq_sched_data *q = qdisc_priv(sch);
     struct rb_root *root;
     struct rb_node *p;
-    struct fq_flow *f;
+    struct marco_fq_flow *f;
     unsigned int idx;
 
     sch->q.qlen = 0;
     sch->qstats.backlog = 0;
 
-    fq_flow_purge(&q->internal);
+    marco_fq_flow_purge(&q->internal);
 
     if (!q->fq_root)
         return;
@@ -730,12 +730,12 @@ static void fq_reset(struct Qdisc *sch)
         root = &q->fq_root[idx];
         while ((p = rb_first(root)) != NULL)
         {
-            f = rb_entry(p, struct fq_flow, fq_node);
+            f = rb_entry(p, struct marco_fq_flow, fq_node);
             rb_erase(p, root);
 
-            fq_flow_purge(f);
+            marco_fq_flow_purge(f);
 
-            kmem_cache_free(fq_flow_cachep, f);
+            kmem_cache_free(marco_fq_flow_cachep, f);
         }
     }
     q->new_flows.first = NULL;
@@ -746,13 +746,13 @@ static void fq_reset(struct Qdisc *sch)
     q->throttled_flows = 0;
 }
 
-static void fq_rehash(struct fq_sched_data *q,
+static void marco_fq_rehash(struct marco_fq_sched_data *q,
                       struct rb_root *old_array, u32 old_log,
                       struct rb_root *new_array, u32 new_log)
 {
     struct rb_node *op, **np, *parent;
     struct rb_root *oroot, *nroot;
-    struct fq_flow *of, *nf;
+    struct marco_fq_flow *of, *nf;
     int fcnt = 0;
     u32 idx;
 
@@ -762,11 +762,11 @@ static void fq_rehash(struct fq_sched_data *q,
         while ((op = rb_first(oroot)) != NULL)
         {
             rb_erase(op, oroot);
-            of = rb_entry(op, struct fq_flow, fq_node);
-            if (fq_gc_candidate(of))
+            of = rb_entry(op, struct marco_fq_flow, fq_node);
+            if (marco_fq_gc_candidate(of))
             {
                 fcnt++;
-                kmem_cache_free(fq_flow_cachep, of);
+                kmem_cache_free(marco_fq_flow_cachep, of);
                 continue;
             }
             nroot = &new_array[hash_ptr(of->sk, new_log)];
@@ -777,7 +777,7 @@ static void fq_rehash(struct fq_sched_data *q,
             {
                 parent = *np;
 
-                nf = rb_entry(parent, struct fq_flow, fq_node);
+                nf = rb_entry(parent, struct marco_fq_flow, fq_node);
                 BUG_ON(nf->sk == of->sk);
 
                 if (nf->sk > of->sk)
@@ -795,14 +795,14 @@ static void fq_rehash(struct fq_sched_data *q,
     q->stat_gc_flows += fcnt;
 }
 
-static void fq_free(void *addr)
+static void marco_fq_free(void *addr)
 {
     kvfree(addr);
 }
 
-static int fq_resize(struct Qdisc *sch, u32 log)
+static int marco_fq_resize(struct Qdisc *sch, u32 log)
 {
-    struct fq_sched_data *q = qdisc_priv(sch);
+    struct marco_fq_sched_data *q = qdisc_priv(sch);
     struct rb_root *array;
     void *old_fq_root;
     u32 idx;
@@ -823,14 +823,14 @@ static int fq_resize(struct Qdisc *sch, u32 log)
 
     old_fq_root = q->fq_root;
     if (old_fq_root)
-        fq_rehash(q, old_fq_root, q->fq_trees_log, array, log);
+        marco_fq_rehash(q, old_fq_root, q->fq_trees_log, array, log);
 
     q->fq_root = array;
     q->fq_trees_log = log;
 
     sch_tree_unlock(sch);
 
-    fq_free(old_fq_root);
+    marco_fq_free(old_fq_root);
 
     return 0;
 }
@@ -855,10 +855,10 @@ static const struct nla_policy fq_policy[TCA_FQ_MAX + 1] = {
     [TCA_FQ_HORIZON_DROP] = {.type = NLA_U8},
 };
 
-static int fq_change(struct Qdisc *sch, struct nlattr *opt,
+static int marco_fq_change(struct Qdisc *sch, struct nlattr *opt,
                      struct netlink_ext_ack *extack)
 {
-    struct fq_sched_data *q = qdisc_priv(sch);
+    struct marco_fq_sched_data *q = qdisc_priv(sch);
     struct nlattr *tb[TCA_FQ_MAX + 1];
     int err, drop_count = 0;
     unsigned drop_len = 0;
@@ -961,12 +961,12 @@ static int fq_change(struct Qdisc *sch, struct nlattr *opt,
     {
 
         sch_tree_unlock(sch);
-        err = fq_resize(sch, fq_log);
+        err = marco_fq_resize(sch, fq_log);
         sch_tree_lock(sch);
     }
     while (sch->q.qlen > sch->limit)
     {
-        struct sk_buff *skb = fq_dequeue(sch);
+        struct sk_buff *skb = marco_fq_dequeue(sch);
 
         if (!skb)
             break;
@@ -980,19 +980,19 @@ static int fq_change(struct Qdisc *sch, struct nlattr *opt,
     return err;
 }
 
-static void fq_destroy(struct Qdisc *sch)
+static void marco_fq_destroy(struct Qdisc *sch)
 {
-    struct fq_sched_data *q = qdisc_priv(sch);
+    struct marco_fq_sched_data *q = qdisc_priv(sch);
 
-    fq_reset(sch);
-    fq_free(q->fq_root);
+    marco_fq_reset(sch);
+    marco_fq_free(q->fq_root);
     qdisc_watchdog_cancel(&q->watchdog);
 }
 
-static int fq_init(struct Qdisc *sch, struct nlattr *opt,
+static int marco_fq_init(struct Qdisc *sch, struct nlattr *opt,
                    struct netlink_ext_ack *extack)
 {
-    struct fq_sched_data *q = qdisc_priv(sch);
+    struct marco_fq_sched_data *q = qdisc_priv(sch);
     int err;
 
     sch->limit = 10000;
@@ -1022,16 +1022,16 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
     qdisc_watchdog_init_clockid(&q->watchdog, sch, CLOCK_MONOTONIC);
 
     if (opt)
-        err = fq_change(sch, opt, extack);
+        err = marco_fq_change(sch, opt, extack);
     else
-        err = fq_resize(sch, q->fq_trees_log);
+        err = marco_fq_resize(sch, q->fq_trees_log);
 
     return err;
 }
 
-static int fq_dump(struct Qdisc *sch, struct sk_buff *skb)
+static int marco_fq_dump(struct Qdisc *sch, struct sk_buff *skb)
 {
-    struct fq_sched_data *q = qdisc_priv(sch);
+    struct marco_fq_sched_data *q = qdisc_priv(sch);
     u64 ce_threshold = q->ce_threshold;
     u64 horizon = q->horizon;
     struct nlattr *opts;
@@ -1070,9 +1070,9 @@ nla_put_failure:
     return -1;
 }
 
-static int fq_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
+static int marco_fq_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 {
-    struct fq_sched_data *q = qdisc_priv(sch);
+    struct marco_fq_sched_data *q = qdisc_priv(sch);
     struct tc_fq_qd_stats st;
 
     sch_tree_lock(sch);
@@ -1101,17 +1101,17 @@ static int fq_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 
 static struct Qdisc_ops fq_qdisc_ops __read_mostly = {
     .id = "marco_fq",
-    .priv_size = sizeof(struct fq_sched_data),
+    .priv_size = sizeof(struct marco_fq_sched_data),
 
-    .enqueue = fq_enqueue,
-    .dequeue = fq_dequeue,
+    .enqueue = marco_fq_enqueue,
+    .dequeue = marco_fq_dequeue,
     .peek = qdisc_peek_dequeued,
-    .init = fq_init,
-    .reset = fq_reset,
-    .destroy = fq_destroy,
-    .change = fq_change,
-    .dump = fq_dump,
-    .dump_stats = fq_dump_stats,
+    .init = marco_fq_init,
+    .reset = marco_fq_reset,
+    .destroy = marco_fq_destroy,
+    .change = marco_fq_change,
+    .dump = marco_fq_dump,
+    .dump_stats = marco_fq_dump_stats,
     .owner = THIS_MODULE,
 };
 
@@ -1120,22 +1120,22 @@ static int __init fq_module_init(void)
     printk("Load the marco fq_module");
     int ret;
 
-    fq_flow_cachep = kmem_cache_create("fq_flow_cache",
-                                       sizeof(struct fq_flow),
+    marco_fq_flow_cachep = kmem_cache_create("fq_flow_cache",
+                                       sizeof(struct marco_fq_flow),
                                        0, 0, NULL);
-    if (!fq_flow_cachep)
+    if (!marco_fq_flow_cachep)
         return -ENOMEM;
 
     ret = register_qdisc(&fq_qdisc_ops);
     if (ret)
-        kmem_cache_destroy(fq_flow_cachep);
+        kmem_cache_destroy(marco_fq_flow_cachep);
     return ret;
 }
 
 static void __exit fq_module_exit(void)
 {
     unregister_qdisc(&fq_qdisc_ops);
-    kmem_cache_destroy(fq_flow_cachep);
+    kmem_cache_destroy(marco_fq_flow_cachep);
     printk("The marco_fq module unloaded");
 }
 

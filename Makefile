@@ -1,3 +1,5 @@
+CONFIG_MODULE_SIG=n
+CONFIG_MODULE_SIG_ALL=n
 obj-m += marco_fq.o
 
 KDIR = /lib/modules/$(shell uname -r)/build
