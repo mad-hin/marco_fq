@@ -8,10 +8,32 @@ The original code is the `sch_fq.c` of the kernel version `5.15`
 - changed the id name in `line 1103`
 - changed the function names (added `marco_` in front of the function names)
 
-## Load to qdisc
+## The kernel module
 
-Current process: cannot load to qdisc
+### How to compile the module
 
-### Possible reason
+1. `cd tc_sch/`
+2. run `make` to compile the module
 
-`openat(AT_FDCWD, "/usr/lib/tc//q_marco_fq.so", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory)`
+### How to load the module
+
+1. `cd tc_sch/`
+2. run `make load` to load the module (require `sudo`)
+
+### How to unload the module
+
+1. `cd tc_sch/`
+2. run `make unload` to unload the module (require `sudo`)
+
+## The qdisc
+
+### Load to qdisc
+
+1. `cd tc_q/`
+2. run `setup.sh` to compile the module
+3. run `load.sh` to load the module
+
+### Unload the qdisc
+
+1. `cd tc_q/`
+2. run `unload.sh` to unload the module (It will change the qdisc to `fq`)

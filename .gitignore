@@ -1,0 +1,12 @@
+.vscode/
+tc_q/iproute2-*
+*.log
+*.json
+
+*.o
+*.cmd
+*.symvers
+*.order
+*.mod.c
+*.ko
+*.mod
