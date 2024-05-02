@@ -465,8 +465,10 @@ static int marco_fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
     struct marco_fq_sched_data *q = qdisc_priv(sch);
     struct marco_fq_flow *f;
 
-    if (unlikely(sch->q.qlen >= sch->limit))
+    if (unlikely(sch->q.qlen >= sch->limit)){
+        printk("The queue is full\n");
         return qdisc_drop(skb, sch, to_free);
+    }
 
     if (!skb->tstamp)
     {
@@ -514,6 +516,7 @@ static int marco_fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
     }
 
     /* Note: this overwrites f->age */
+    printk("add to flow queue\n");
     marco_flow_queue_add(f, skb);
 
     if (unlikely(f == &q->internal))

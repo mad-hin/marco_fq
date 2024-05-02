@@ -1,5 +1,5 @@
 .vscode/
-tc_q/iproute2-*
+tc_q/iproute2/
 *.log
 *.json
 
