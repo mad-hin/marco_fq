@@ -44,12 +44,21 @@
 #include <linux/hash.h>
 #include <linux/prefetch.h>
 #include <linux/vmalloc.h>
+#include <linux/hashtable.h>
 #include <net/netlink.h>
 #include <net/pkt_sched.h>
 #include <net/sock.h>
 #include <net/tcp_states.h>
 #include <net/tcp.h>
 
+DEFINE_HASHTABLE(ip_count_table, 16); // 16 is the number of bits in the hash table
+
+struct hash_ip_count
+{
+    __be32 ip;               // Source IP address
+    int count;               // Number of packets from this source IP
+    struct hlist_node hnode; // Node for hash table
+};
 struct marco_fq_skb_cb
 {
     u64 time_to_send;
@@ -517,6 +526,36 @@ static int marco_fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 
     /* Note: this overwrites f->age */
     printk("add to flow queue\n");
+    struct iphdr *iph = ip_hdr(skb);
+    __be32 des_ip = iph->daddr;
+
+    struct hash_ip_count *ip_count;
+    unsigned int key = jhash_1word((__force u32)des_ip, 0);
+
+    hash_for_each_possible(ip_count_table, ip_count, hnode, key)
+    {
+        if (ip_count->ip == des_ip)
+        {
+            ip_count->count++;
+            printk("count++");
+            break;
+        }
+    }
+
+    if (!ip_count)
+    {
+        ip_count = kmalloc(sizeof(*ip_count), GFP_ATOMIC);
+        if (!ip_count)
+            return ENOMEM;
+
+        ip_count->ip = des_ip;
+        ip_count->count = 1;
+        hash_add(ip_count_table, &ip_count->hnode, key);
+        printk("New ip");
+        char buf[16];
+        sprintf(buf, "%pI4", &des_ip);
+        printk("Des IP: %s\n", buf);
+    }
     marco_flow_queue_add(f, skb);
 
     if (unlikely(f == &q->internal))
@@ -1118,6 +1157,19 @@ static struct Qdisc_ops fq_qdisc_ops __read_mostly = {
     .owner = THIS_MODULE,
 };
 
+void clear_ip_count_table(void)
+{
+    struct hash_ip_count *ip_count;
+    struct hlist_node *tmp;
+    int bkt;
+
+    hash_for_each_safe(ip_count_table, bkt, tmp, ip_count, hnode)
+    {
+        hash_del(&ip_count->hnode);
+        kfree(ip_count);
+    }
+}
+
 static int __init fq_module_init(void)
 {
     printk("Load the marco fq_module");
@@ -1132,6 +1184,8 @@ static int __init fq_module_init(void)
     ret = register_qdisc(&fq_qdisc_ops);
     if (ret)
         kmem_cache_destroy(marco_fq_flow_cachep);
+
+    hash_init(ip_count_table);
     return ret;
 }
 
@@ -1139,6 +1193,7 @@ static void __exit fq_module_exit(void)
 {
     unregister_qdisc(&fq_qdisc_ops);
     kmem_cache_destroy(marco_fq_flow_cachep);
+    clear_ip_count_table();
     printk("The marco_fq module unloaded");
 }
 

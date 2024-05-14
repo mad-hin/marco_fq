@@ -7,6 +7,8 @@ The original code is the `sch_fq.c` of the kernel version `5.15`
 - added a debug message in the `fq_module_init` and `fq_module_exit` to see have the module loaded or not
 - changed the id name in `line 1103`
 - changed the function names (added `marco_` in front of the function names)
+- added a hash table for storing the dest ip address
+- store the dest ip address when enqueuing
 
 ## The kernel module
 

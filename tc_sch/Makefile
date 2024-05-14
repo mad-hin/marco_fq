@@ -18,3 +18,6 @@ unload:
 
 check:
 	sudo dmesg
+
+reset:
+	sudo rmmod marco_fq && sudo insmod marco_fq.ko
