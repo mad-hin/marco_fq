@@ -537,7 +537,9 @@ static int marco_fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
         if (ip_count->ip == des_ip)
         {
             ip_count->count++;
-            printk("count++");
+            char buf[16];
+            sprintf(buf, "%pI4", &des_ip);
+            printk("income ip_count->count: %d\t%s\n", ip_count->count, buf);
             break;
         }
     }
@@ -647,6 +649,30 @@ begin:
     {
         u64 time_next_packet = max_t(u64, marco_fq_skb_cb(skb)->time_to_send,
                                      f->time_next_packet);
+
+        // get the source ip
+        struct iphdr *iph = ip_hdr(skb);
+        __be32 des_ip = iph->daddr;
+
+        struct hash_ip_count *ip_count;
+        unsigned int key = jhash_1word((__force u32)des_ip, 0);
+        hash_for_each_possible(ip_count_table, ip_count, hnode, key)
+        {
+            if (ip_count->ip == des_ip && ip_count->count > 0)
+            {
+                ip_count->count--;
+                char buf[16];
+                sprintf(buf, "%pI4", &des_ip);
+                printk("ip_count->count: %d\t%s\n", ip_count->count,buf);
+
+                // add delay if the output package is > 10
+                if (ip_count->count > 10)
+                {
+                    time_next_packet += 1000000000;
+                    printk("added 1 sec");
+                }
+            }
+        }
 
         if (now < time_next_packet)
         {
