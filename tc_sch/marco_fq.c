@@ -55,10 +55,12 @@ DEFINE_HASHTABLE(ip_count_table, 16); // 16 is the number of bits in the hash ta
 
 struct hash_ip_count
 {
-    __be32 ip;               // Source IP address
+    __be32 s_ip;
+    __be32 d_ip;             // Source IP address
     int count;               // Number of packets from this source IP
     struct hlist_node hnode; // Node for hash table
 };
+
 struct marco_fq_skb_cb
 {
     u64 time_to_send;
@@ -528,18 +530,19 @@ static int marco_fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
     printk("add to flow queue\n");
     struct iphdr *iph = ip_hdr(skb);
     __be32 des_ip = iph->daddr;
+    __be32 src_ip = iph->saddr;
 
     struct hash_ip_count *ip_count;
     unsigned int key = jhash_1word((__force u32)des_ip, 0);
 
     hash_for_each_possible(ip_count_table, ip_count, hnode, key)
     {
-        if (ip_count->ip == des_ip)
+        if (ip_count->d_ip == des_ip && ip_count->s_ip == src_ip)
         {
             ip_count->count++;
             char buf[16];
             sprintf(buf, "%pI4", &des_ip);
-            printk("income ip_count->count: %d\t%s\n", ip_count->count, buf);
+            printk("income des ip_count->count: %d\t%s\n", ip_count->count, buf);
             break;
         }
     }
@@ -550,7 +553,8 @@ static int marco_fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
         if (!ip_count)
             return ENOMEM;
 
-        ip_count->ip = des_ip;
+        ip_count->d_ip = des_ip;
+        ip_count->s_ip = src_ip;
         ip_count->count = 1;
         hash_add(ip_count_table, &ip_count->hnode, key);
         printk("New ip");
@@ -653,16 +657,17 @@ begin:
         // get the source ip
         struct iphdr *iph = ip_hdr(skb);
         __be32 des_ip = iph->daddr;
+        __be32 src_ip = iph->saddr;
 
         struct hash_ip_count *ip_count;
-        unsigned int key = jhash_1word((__force u32)des_ip, 0);
+        unsigned int key = jhash_1word((__force u32)src_ip, 0); // check for source ip as it should be the output flow
         hash_for_each_possible(ip_count_table, ip_count, hnode, key)
         {
-            if (ip_count->ip == des_ip && ip_count->count > 0)
+            if (ip_count->s_ip == des_ip && ip_count->d_ip == src_ip && ip_count->count > 0)
             {
                 ip_count->count--;
                 char buf[16];
-                sprintf(buf, "%pI4", &des_ip);
+                sprintf(buf, "%pI4", &src_ip);
                 printk("ip_count->count: %d\t%s\n", ip_count->count,buf);
 
                 // add delay if the output package is > 10
