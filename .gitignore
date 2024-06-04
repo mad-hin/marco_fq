@@ -1,5 +1,6 @@
 .vscode/
 tc_q/iproute2/
+test/test_env
 *.log
 *.json
 
