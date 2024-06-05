@@ -1,16 +1,16 @@
 import socket
+import time
 
-# Define the IP address and the Port Number
-ip = input("Please type the ip where you want to send")
-port = 12345
+server_ip = "10.0.2.5"
+server_port = 12345
 
-# Create a UDP socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-# Send 10 UDP packets
-for i in range(10):
-    message = f"Packet {i+1}"
-    sock.sendto(message.encode(), (ip, port))
-
-# Close the socket
-sock.close()
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+for i in range(1,101):
+    message =f"Packet {i}"
+    message = message.encode()
+    start = time.time()
+    client_socket.sendto(message, (server_ip, server_port))
+    data, server = client_socket.recvfrom(1024)
+    end = time.time()
+    rtt = (end - start) * 1000  # convert to milliseconds
+    print(f"Received {data} from {server}, RTT = {rtt} ms")
