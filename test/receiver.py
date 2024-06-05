@@ -1,21 +1,12 @@
 import socket
 
-# Define the IP address and the Port Number
-ip = input("Please type the ip where you want to send")
-port = 12345
-
-# Create a UDP socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-# Bind the socket to the address and port
-sock.bind((ip, port))
-
-# Listen for incoming datagrams
+server_ip = "10.0.2.5"
+server_port = 12345
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server_socket.bind((server_ip, server_port))
+print(f"Server started at {server_ip}:{server_port}")
 while True:
-    data, addr = sock.recvfrom(1024)  # buffer size is 1024 bytes
-    print(f"received message: {data.decode()} from {addr}")
-    message = f"Received Packet"
-    sock.sendto(message.encode(), (ip, port))
-
-# Close the socket
-sock.close()
+    data, addr = server_socket.recvfrom(1024)
+    print(f"Received {data} from {addr}")
+    message = "ACK" + data.decode()
+    server_socket.sendto(message.encode(), addr)
