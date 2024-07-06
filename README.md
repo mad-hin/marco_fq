@@ -31,11 +31,17 @@ The original code is the `sch_fq.c` of the kernel version `5.15`
 
 ### Load to qdisc
 
-1. `cd tc_q/`
-2. run `setup.sh` to compile the module
-3. run `load.sh` to load the module
+1. run `interface.sh`
+2. `cd tc_q/`
+   1. run `setup.sh` if first time setup
+3. run `cd iproute2`
+4. run `sudo TC_LIB_DIR='./tc' tc qdisc add dev veth0 root marco_fq limit 100 & sudo TC_LIB_DIR='./tc' tc qdisc add dev enp0s3 root marco_fq limit 100`
 
 ### Unload the qdisc
 
 1. `cd tc_q/`
 2. run `unload.sh` to unload the module (It will change the qdisc to `fq`)
+
+## Testing
+
+You may refer to [this](test/README.md)
