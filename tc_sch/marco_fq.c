@@ -667,12 +667,12 @@ begin:
             {
                 ip_count->count--;
                 char buf[16];
-                sprintf(buf, "%pI4", &src_ip);
-                printk("ip_count->count: %d\t source:%s\n", ip_count->count,buf);
 
                 // add delay if the output package is > 10
                 if (ip_count->count > 5)
                 {
+                    sprintf(buf, "%pI4", &des_ip);
+                    printk("ip_count->count: %d\t source:%s\n", ip_count->count, buf);
                     time_next_packet += 10000000;
                     printk("added 10 ms");
                 }

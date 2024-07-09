@@ -1,11 +1,12 @@
 import socket
 import time
+import threading
 
 server_ip = "10.0.2.5"
 server_port = 12345
 
-client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-for i in range(1,101):
+def send_packet(i):
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     message =f"Packet {i}"
     message = message.encode()
     start = time.time()
@@ -13,4 +14,15 @@ for i in range(1,101):
     data, server = client_socket.recvfrom(1024)
     end = time.time()
     rtt = (end - start) * 1000  # convert to milliseconds
-    print(f"Received {data} from {server}, RTT = {rtt} ms")
+    if rtt > 10:
+        print(f"Received {data} from {server}, RTT = {rtt} ms")
+
+threads = []
+
+for i in range(1,10000):
+    thread = threading.Thread(target=send_packet, args=(i,))
+    thread.start()
+    threads.append(thread)
+
+for thread in threads:
+    thread.join()
