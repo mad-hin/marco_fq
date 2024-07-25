@@ -2,12 +2,16 @@ import socket
 import time
 import threading
 
-server_ip = "10.0.2.5"
+server_ip = "10.0.2.4"
 server_port = 12345
 
-def send_packet(i):
+for i in range(1,101):
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    message =f"Packet {i}"
+    client_socket.bind(("10.0.2.4", server_port))
+    if i < 10:
+        message =f"0{i}"
+    else:
+        message =f"{i}"
     message = message.encode()
     start = time.time()
     client_socket.sendto(message, (server_ip, server_port))
@@ -19,10 +23,10 @@ def send_packet(i):
 
 threads = []
 
-for i in range(1,10000):
-    thread = threading.Thread(target=send_packet, args=(i,))
-    thread.start()
-    threads.append(thread)
+# for i in range(1,100):
+#     thread = threading.Thread(target=send_packet, args=(i,))
+#     thread.start()
+#     threads.append(thread)
 
-for thread in threads:
-    thread.join()
+# for thread in threads:
+#     thread.join()

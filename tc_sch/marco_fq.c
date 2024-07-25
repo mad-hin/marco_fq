@@ -58,6 +58,7 @@ struct hash_ip_count
     __be32 s_ip;
     __be32 d_ip;             // Source IP address
     int count;               // Number of packets from this source IP
+    __be16 added;
     struct hlist_node hnode; // Node for hash table
 };
 
@@ -537,12 +538,14 @@ static int marco_fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 
     hash_for_each_possible(ip_count_table, ip_count, hnode, key)
     {
-        if (ip_count->d_ip == des_ip && ip_count->s_ip == src_ip)
+        if (ip_count->d_ip == des_ip && ip_count->s_ip == src_ip && ip_count->added != iph->id)
         {
             ip_count->count++;
             char buf[16];
-            sprintf(buf, "%pI4", &des_ip);
-            printk("income des ip_count->count: %d\t%s\n", ip_count->count, buf);
+            char buf2[16];
+            sprintf(buf, "%pI4", &src_ip);
+            sprintf(buf2, "%pI4", &des_ip);
+            printk("income des ip_count->count: %d\t%s\t%s\n", ip_count->count, buf, buf2);
             break;
         }
     }
@@ -556,6 +559,7 @@ static int marco_fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
         ip_count->d_ip = des_ip;
         ip_count->s_ip = src_ip;
         ip_count->count = 1;
+        ip_count->added = iph->id;
         hash_add(ip_count_table, &ip_count->hnode, key);
         printk("New ip");
         char buf[16];
@@ -663,18 +667,29 @@ begin:
         unsigned int key = jhash_1word((__force u32)src_ip, 0); // check for source ip as it should be the output flow
         hash_for_each_possible(ip_count_table, ip_count, hnode, key)
         {
-            if (ip_count->s_ip == des_ip && ip_count->d_ip == src_ip && ip_count->count > 0)
+            if (ip_count->s_ip == des_ip && ip_count->d_ip == src_ip)
             {
-                ip_count->count--;
+                // ip_count->count--;
                 char buf[16];
+                char buf2[16];
 
                 // add delay if the output package is > 10
-                if (ip_count->count > 5)
+                if (ip_count->count > 95 && ip_count->added != iph->id)
                 {
                     sprintf(buf, "%pI4", &des_ip);
-                    printk("ip_count->count: %d\t source:%s\n", ip_count->count, buf);
-                    time_next_packet += 10000000;
-                    printk("added 10 ms");
+                    sprintf(buf2, "%pI4", &src_ip);
+                    printk("ip_count->count: %d\t source:%s\t des:%s\n", ip_count->count, buf, buf2);
+                    time_next_packet += 5000000;
+                    printk("added 5 ms");
+                    ip_count->added = iph->id;
+                }
+                else
+                {
+                    char buf[16];
+                    char buf2[16];
+                    sprintf(buf, "%pI4", &des_ip);
+                    sprintf(buf2, "%pI4", &src_ip);
+                    // printk("ip_count->count: %d\t source:%s\t des:%s\n", ip_count->count, buf, buf2);
                 }
             }
         }
