@@ -41,3 +41,5 @@ sudo  ip link add veth0 type ifb
 ip link set dev veth0 up
 tc qdisc add dev enp0s3 ingress
 tc filter add dev enp0s3 parent ffff: protocol all u32 match u8 0 0 action mirred egress redirect dev veth0
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo sysctl -w net.ipv4.tcp_no_metrics_save=1

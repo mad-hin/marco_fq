@@ -45,6 +45,7 @@
 #include <linux/prefetch.h>
 #include <linux/vmalloc.h>
 #include <linux/hashtable.h>
+#include <linux/delay.h>
 #include <net/netlink.h>
 #include <net/pkt_sched.h>
 #include <net/sock.h>
@@ -548,6 +549,11 @@ static int marco_fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
             printk("income des ip_count->count: %d\t%s\t%s\n", ip_count->count, buf, buf2);
             break;
         }
+        // char buf[16];
+        // char buf2[16];
+        // sprintf(buf, "%pI4", &src_ip);
+        // sprintf(buf2, "%pI4", &des_ip);
+        // printk("income des ip_count->count: %d\t%s\t%s\n", ip_count->count, buf, buf2);
     }
 
     if (!ip_count)
@@ -674,12 +680,12 @@ begin:
                 char buf2[16];
 
                 // add delay if the output package is > 10
-                if (ip_count->count > 95 && ip_count->added != iph->id)
+                if (ip_count->count > 30 && ip_count->added != iph->id)
                 {
                     sprintf(buf, "%pI4", &des_ip);
                     sprintf(buf2, "%pI4", &src_ip);
                     printk("ip_count->count: %d\t source:%s\t des:%s\n", ip_count->count, buf, buf2);
-                    time_next_packet += 5000000;
+                    time_next_packet += 500000;
                     printk("added 5 ms");
                     ip_count->added = iph->id;
                 }
